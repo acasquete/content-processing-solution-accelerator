@@ -450,16 +450,6 @@ module avmKeyVault './modules/key-vault.bicep' = {
         roleDefinitionIdOrName: 'Key Vault Administrator'
         principalType: 'ServicePrincipal'
       }
-      {
-        principalId: avmContainerApp.outputs.systemAssignedMIPrincipalId!
-        roleDefinitionIdOrName: 'Key Vault Secrets User'
-        principalType: 'ServicePrincipal'
-      }
-      {
-        principalId: avmContainerApp_API.outputs.systemAssignedMIPrincipalId!
-        roleDefinitionIdOrName: 'Key Vault Secrets User'
-        principalType: 'ServicePrincipal'
-      }
     ]
     enablePurgeProtection: false
     enableSoftDelete: true
@@ -515,26 +505,6 @@ module avmStorageAccount 'br/public:avm/res/storage/storage-account:0.20.0' = {
       {
         principalId: avmManagedIdentity.outputs.principalId
         roleDefinitionIdOrName: 'Storage Blob Data Contributor'
-        principalType: 'ServicePrincipal'
-      }
-      {
-        roleDefinitionIdOrName: 'Storage Blob Data Contributor'
-        principalId: avmContainerApp.outputs.systemAssignedMIPrincipalId!
-        principalType: 'ServicePrincipal'
-      }
-      {
-        roleDefinitionIdOrName: 'Storage Blob Data Contributor'
-        principalId: avmContainerApp_API.outputs.systemAssignedMIPrincipalId!
-        principalType: 'ServicePrincipal'
-      }
-      {
-        roleDefinitionIdOrName: 'Storage Queue Data Contributor'
-        principalId: avmContainerApp.outputs.systemAssignedMIPrincipalId!
-        principalType: 'ServicePrincipal'
-      }
-      {
-        roleDefinitionIdOrName: 'Storage Queue Data Contributor'
-        principalId: avmContainerApp_API.outputs.systemAssignedMIPrincipalId!
         principalType: 'ServicePrincipal'
       }
     ]
@@ -611,11 +581,6 @@ module avmAiServices 'modules/account/main.bicep' = {
       {
         principalId: avmManagedIdentity.outputs.principalId
         roleDefinitionIdOrName: '8e3af657-a8ff-443c-a75c-2fe8c4bcb635' // Owner role
-        principalType: 'ServicePrincipal'
-      }
-      {
-        principalId: avmContainerApp.outputs.systemAssignedMIPrincipalId!
-        roleDefinitionIdOrName: 'Cognitive Services OpenAI User'
         principalType: 'ServicePrincipal'
       }
     ]
@@ -706,13 +671,7 @@ module avmAiServices_cu 'br/public:avm/res/cognitive-services/account:0.11.0' = 
       //defaultAction: (enablePrivateNetworking) ? 'Deny' : 'Allow'
       defaultAction: 'Allow' // Always allow for AI Services
     }
-    roleAssignments: [
-      {
-        principalId: avmContainerApp.outputs.systemAssignedMIPrincipalId!
-        roleDefinitionIdOrName: 'a97b65f3-24c7-4388-baec-2e87135dc908'
-        principalType: 'ServicePrincipal'
-      }
-    ]
+    roleAssignments: []
 
     publicNetworkAccess: (enablePrivateNetworking) ? 'Disabled' : 'Enabled'
     privateEndpoints: (enablePrivateNetworking)
@@ -1116,7 +1075,7 @@ resource cosmosConnStrSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
     value: avmCosmosDB.outputs.primaryReadWriteConnectionString
   }
   dependsOn: [
-    avmKeyVault,
+    avmKeyVault
     avmCosmosDB
   ]
 }
