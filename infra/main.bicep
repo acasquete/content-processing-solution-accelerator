@@ -341,6 +341,9 @@ module avmVirtualNetwork 'br/public:avm/res/network/virtual-network:0.7.0' = if 
   }
 }
 
+var vnetResourceId = avmVirtualNetwork?.outputs.resourceId ?? ''
+var vnetSubnetIds = avmVirtualNetwork?.outputs.subnetResourceIds ?? []
+
 // ========== Private DNS Zones ========== //
 var privateDnsZones = [
   'privatelink.cognitiveservices.azure.com'
@@ -381,7 +384,7 @@ module avmPrivateDnsZones 'br/public:avm/res/network/private-dns-zone:0.7.1' = [
       name: zone
       tags: tags
       enableTelemetry: enableTelemetry
-      virtualNetworkLinks: [{ virtualNetworkResourceId: avmVirtualNetwork.outputs.resourceId }]
+      virtualNetworkLinks: [{ virtualNetworkResourceId: vnetResourceId }]
     }
   }
 ]
@@ -532,7 +535,7 @@ module avmStorageAccount 'br/public:avm/res/storage/storage-account:0.20.0' = {
                 }
               ]
             }
-            subnetResourceId: avmVirtualNetwork.outputs.subnetResourceIds[0] // Use the backend subnet
+            subnetResourceId: vnetSubnetIds[0] // Use the backend subnet
             service: 'blob'
           }
           {
@@ -546,7 +549,7 @@ module avmStorageAccount 'br/public:avm/res/storage/storage-account:0.20.0' = {
                 }
               ]
             }
-            subnetResourceId: avmVirtualNetwork.outputs.subnetResourceIds[0] // Use the backend subnet
+            subnetResourceId: vnetSubnetIds[0] // Use the backend subnet
             service: 'queue'
           }
         ]
@@ -613,7 +616,7 @@ module avmAiServices 'modules/account/main.bicep' = {
       ? [
           {
             name: 'ai-services-private-endpoint-${solutionPrefix}'
-            privateEndpointResourceId: avmVirtualNetwork.outputs.resourceId
+            privateEndpointResourceId: vnetResourceId
             privateDnsZoneGroup: {
               privateDnsZoneGroupConfigs: [
                 {
@@ -638,7 +641,7 @@ module avmAiServices 'modules/account/main.bicep' = {
                 }
               ]
             }
-            subnetResourceId: avmVirtualNetwork.outputs.subnetResourceIds[0] // Use the backend subnet
+            subnetResourceId: vnetSubnetIds[0] // Use the backend subnet
           }
         ]
       : []
@@ -678,7 +681,7 @@ module avmAiServices_cu 'br/public:avm/res/cognitive-services/account:0.11.0' = 
       ? [
           {
             name: 'aicu-private-endpoint-${solutionPrefix}'
-            privateEndpointResourceId: avmVirtualNetwork.outputs.resourceId
+            privateEndpointResourceId: vnetResourceId
             privateDnsZoneGroup: {
               privateDnsZoneGroupConfigs: [
                 {
@@ -693,7 +696,7 @@ module avmAiServices_cu 'br/public:avm/res/cognitive-services/account:0.11.0' = 
                 }
               ]
             }
-            subnetResourceId: avmVirtualNetwork.outputs.subnetResourceIds[0] // Use the backend subnet
+            subnetResourceId: vnetSubnetIds[0] // Use the backend subnet
           }
         ]
       : []
@@ -733,7 +736,7 @@ module avmContainerAppEnv 'br/public:avm/res/app/managed-environment:0.11.2' = {
     platformReservedDnsIP: '172.17.17.17'
     zoneRedundant: (enablePrivateNetworking) ? true : false // Enable zone redundancy if private networking is enabled
     infrastructureSubnetResourceId: (enablePrivateNetworking)
-      ? avmVirtualNetwork.outputs.subnetResourceIds[1] // Use the container app subnet
+      ? vnetSubnetIds[1] // Use the container app subnet
       : null // Use the container app subnet
   }
 }
@@ -749,6 +752,12 @@ module avmContainerRegistryReader 'br/public:avm/res/managed-identity/user-assig
   }
   scope: resourceGroup(resourceGroup().name)
 }
+
+var aiEndpoint = avmAiServices?.outputs.endpoint ?? ''
+var aiProjectEndpoint = avmAiServices?.outputs.aiProjectInfo.apiEndpoint ?? ''
+var cuEndpoint = avmAiServices_cu?.outputs.endpoint ?? ''
+var storageBlobUrl = avmStorageAccount?.outputs.serviceEndpoints.blob ?? ''
+var storageQueueUrl = avmStorageAccount?.outputs.serviceEndpoints.queue ?? ''
 
 // ========== Container App  ========== //
 module avmContainerApp 'br/public:avm/res/app/container-app:0.17.0' = {
@@ -784,9 +793,9 @@ module avmContainerApp 'br/public:avm/res/app/container-app:0.17.0' = {
         }
         env: [
           { name: 'APP_ENV', value: 'prod' }
-          { name: 'APP_AZURE_OPENAI_ENDPOINT', value: avmAiServices.outputs.endpoint }
+          { name: 'APP_AZURE_OPENAI_ENDPOINT', value: aiEndpoint }
           { name: 'APP_AZURE_OPENAI_MODEL', value: gptModelName }
-          { name: 'APP_CONTENT_UNDERSTANDING_ENDPOINT', value: avmAiServices_cu.outputs.endpoint }
+          { name: 'APP_CONTENT_UNDERSTANDING_ENDPOINT', value: cuEndpoint }
           { name: 'APP_COSMOS_CONTAINER_PROCESS', value: 'Processes' }
           { name: 'APP_COSMOS_CONTAINER_SCHEMA', value: 'Schemas' }
           { name: 'APP_COSMOS_DATABASE', value: 'ContentProcess' }
@@ -799,9 +808,9 @@ module avmContainerApp 'br/public:avm/res/app/container-app:0.17.0' = {
           { name: 'APP_MESSAGE_QUEUE_PROCESS_TIMEOUT', value: '180' }
           { name: 'APP_MESSAGE_QUEUE_VISIBILITY_TIMEOUT', value: '10' }
           { name: 'APP_PROCESS_STEPS', value: 'extract,map,evaluate,save' }
-          { name: 'APP_STORAGE_BLOB_URL', value: avmStorageAccount.outputs.serviceEndpoints.blob }
-          { name: 'APP_STORAGE_QUEUE_URL', value: avmStorageAccount.outputs.serviceEndpoints.queue }
-          { name: 'APP_AI_PROJECT_ENDPOINT', value: avmAiServices.outputs.aiProjectInfo.apiEndpoint }
+          { name: 'APP_STORAGE_BLOB_URL', value: storageBlobUrl }
+          { name: 'APP_STORAGE_QUEUE_URL', value: storageQueueUrl }
+          { name: 'APP_AI_PROJECT_ENDPOINT', value: aiProjectEndpoint }
           { name: 'APP_COSMOS_CONNSTR', secretRef: 'cosmos-connstr' }
         ]
       }
@@ -815,6 +824,12 @@ module avmContainerApp 'br/public:avm/res/app/container-app:0.17.0' = {
     }
     tags: tags
   }
+  dependsOn: [
+    avmKeyVault
+    avmStorageAccount
+    avmAiServices
+    avmAiServices_cu
+  ]
 }
 
 // ========== Container App API ========== //
@@ -850,8 +865,8 @@ module avmContainerApp_API 'br/public:avm/res/app/container-app:0.17.0' = {
         }
         env: [
           { name: 'APP_ENV', value: 'prod' }
-          { name: 'APP_STORAGE_BLOB_URL', value: avmStorageAccount.outputs.serviceEndpoints.blob }
-          { name: 'APP_STORAGE_QUEUE_URL', value: avmStorageAccount.outputs.serviceEndpoints.queue }
+            { name: 'APP_STORAGE_BLOB_URL', value: storageBlobUrl }
+            { name: 'APP_STORAGE_QUEUE_URL', value: storageQueueUrl }
           { name: 'APP_COSMOS_DATABASE', value: 'ContentProcess' }
           { name: 'APP_COSMOS_CONTAINER_SCHEMA', value: 'Schemas' }
           { name: 'APP_COSMOS_CONTAINER_PROCESS', value: 'Processes' }
@@ -938,6 +953,12 @@ module avmContainerApp_API 'br/public:avm/res/app/container-app:0.17.0' = {
       ]
     }
   }
+  dependsOn: [
+    avmKeyVault
+    avmStorageAccount
+    avmAiServices
+    avmAiServices_cu
+  ]
 }
 
 //========== Container App Web ========== //
@@ -1012,6 +1033,9 @@ module avmContainerApp_Web 'br/public:avm/res/app/container-app:0.17.0' = {
       }
     ]
   }
+  dependsOn: [
+    avmContainerApp_API
+  ]
 }
 
 // ========== Cosmos Database for Mongo DB ========== //
@@ -1051,7 +1075,7 @@ module avmCosmosDB 'br/public:avm/res/document-db/database-account:0.15.0' = {
       ? [
           {
             name: 'cosmosdb-private-endpoint-${solutionPrefix}'
-            privateEndpointResourceId: avmVirtualNetwork.outputs.resourceId
+            privateEndpointResourceId: vnetResourceId
             privateDnsZoneGroup: {
               privateDnsZoneGroupConfigs: [
                 {
@@ -1062,7 +1086,7 @@ module avmCosmosDB 'br/public:avm/res/document-db/database-account:0.15.0' = {
               ]
             }
             service: 'MongoDB'
-            subnetResourceId: avmVirtualNetwork.outputs.subnetResourceIds[0] // Use the backend subnet
+            subnetResourceId: vnetSubnetIds[0] // Use the backend subnet
           }
         ]
       : []
@@ -1114,9 +1138,9 @@ module avmContainerApp_update 'br/public:avm/res/app/container-app:0.17.0' = {
         }
         env: [
           { name: 'APP_ENV', value: 'prod' }
-          { name: 'APP_AZURE_OPENAI_ENDPOINT', value: avmAiServices.outputs.endpoint }
+            { name: 'APP_AZURE_OPENAI_ENDPOINT', value: aiEndpoint }
           { name: 'APP_AZURE_OPENAI_MODEL', value: gptModelName }
-          { name: 'APP_CONTENT_UNDERSTANDING_ENDPOINT', value: avmAiServices_cu.outputs.endpoint }
+            { name: 'APP_CONTENT_UNDERSTANDING_ENDPOINT', value: cuEndpoint }
           { name: 'APP_COSMOS_CONTAINER_PROCESS', value: 'Processes' }
           { name: 'APP_COSMOS_CONTAINER_SCHEMA', value: 'Schemas' }
           { name: 'APP_COSMOS_DATABASE', value: 'ContentProcess' }
@@ -1129,9 +1153,9 @@ module avmContainerApp_update 'br/public:avm/res/app/container-app:0.17.0' = {
           { name: 'APP_MESSAGE_QUEUE_PROCESS_TIMEOUT', value: '180' }
           { name: 'APP_MESSAGE_QUEUE_VISIBILITY_TIMEOUT', value: '10' }
           { name: 'APP_PROCESS_STEPS', value: 'extract,map,evaluate,save' }
-          { name: 'APP_STORAGE_BLOB_URL', value: avmStorageAccount.outputs.serviceEndpoints.blob }
-          { name: 'APP_STORAGE_QUEUE_URL', value: avmStorageAccount.outputs.serviceEndpoints.queue }
-          { name: 'APP_AI_PROJECT_ENDPOINT', value: avmAiServices.outputs.aiProjectInfo.apiEndpoint }
+            { name: 'APP_STORAGE_BLOB_URL', value: storageBlobUrl }
+            { name: 'APP_STORAGE_QUEUE_URL', value: storageQueueUrl }
+            { name: 'APP_AI_PROJECT_ENDPOINT', value: aiProjectEndpoint }
           { name: 'APP_COSMOS_CONNSTR', secretRef: 'cosmos-connstr' }
         ]
       }
@@ -1156,6 +1180,13 @@ module avmContainerApp_update 'br/public:avm/res/app/container-app:0.17.0' = {
         : []
     }
   }
+  dependsOn: [
+    avmContainerApp
+    avmKeyVault
+    avmStorageAccount
+    avmAiServices
+    avmAiServices_cu
+  ]
 }
 
 module avmContainerApp_API_update 'br/public:avm/res/app/container-app:0.17.0' = {
@@ -1191,8 +1222,8 @@ module avmContainerApp_API_update 'br/public:avm/res/app/container-app:0.17.0' =
         }
         env: [
           { name: 'APP_ENV', value: 'prod' }
-          { name: 'APP_STORAGE_BLOB_URL', value: avmStorageAccount.outputs.serviceEndpoints.blob }
-          { name: 'APP_STORAGE_QUEUE_URL', value: avmStorageAccount.outputs.serviceEndpoints.queue }
+            { name: 'APP_STORAGE_BLOB_URL', value: storageBlobUrl }
+            { name: 'APP_STORAGE_QUEUE_URL', value: storageQueueUrl }
           { name: 'APP_COSMOS_DATABASE', value: 'ContentProcess' }
           { name: 'APP_COSMOS_CONTAINER_SCHEMA', value: 'Schemas' }
           { name: 'APP_COSMOS_CONTAINER_PROCESS', value: 'Processes' }
@@ -1279,6 +1310,11 @@ module avmContainerApp_API_update 'br/public:avm/res/app/container-app:0.17.0' =
       ]
     }
   }
+  dependsOn: [
+    avmContainerApp_API
+    avmKeyVault
+    avmStorageAccount
+  ]
 }
 
 // ============ //

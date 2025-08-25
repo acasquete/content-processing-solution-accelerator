@@ -40,9 +40,13 @@ resource existingLogAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces
   scope: resourceGroup(existingLawSubscription, existingLawResourceGroup)
 }
 
-var lawKeys = useExistingWorkspace ? listKeys(existingLogAnalyticsWorkspace.id, '2020-08-01') : logAnalyticsWorkspace.outputs.primarySharedKey
+var lawKeys = useExistingWorkspace ? listKeys(existingLogAnalyticsWorkspace.id, '2020-08-01') : null
 
-output resourceId string = useExistingWorkspace ? existingLogAnalyticsWorkspace.id : logAnalyticsWorkspace.outputs.resourceId 
-output logAnalyticsWorkspaceId string = useExistingWorkspace ? existingLogAnalyticsWorkspace.properties.customerId : logAnalyticsWorkspace.outputs.logAnalyticsWorkspaceId
+var newWorkspaceResourceId = logAnalyticsWorkspace?.outputs.resourceId ?? ''
+var newWorkspaceId = logAnalyticsWorkspace?.outputs.logAnalyticsWorkspaceId ?? ''
+var newPrimaryKey = logAnalyticsWorkspace?.outputs.primarySharedKey ?? ''
+
+output resourceId string = useExistingWorkspace ? existingLogAnalyticsWorkspace.id : newWorkspaceResourceId
+output logAnalyticsWorkspaceId string = useExistingWorkspace ? existingLogAnalyticsWorkspace.properties.customerId : newWorkspaceId
 @secure()
-output primarySharedKey string = useExistingWorkspace ? lawKeys.primarySharedKey : logAnalyticsWorkspace.outputs.primarySharedKey
+output primarySharedKey string = useExistingWorkspace ? (lawKeys?.primarySharedKey ?? '') : newPrimaryKey

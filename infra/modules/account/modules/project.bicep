@@ -21,6 +21,12 @@ var useExistingProject = !empty(azureExistingAIProjectResourceId)
 var existingProjName = useExistingProject ? last(split(azureExistingAIProjectResourceId, '/')) : ''
 var existingProjEndpoint = useExistingProject ? format('https://{0}.services.ai.azure.com/api/projects/{1}', aiServicesName, existingProjName) : ''
 
+// Fallback endpoint in case project endpoints aren't available at compile time
+var newProjEndpoint = format('https://{0}.services.ai.azure.com/api/projects/{1}', aiServicesName, name)
+var resolvedEndpoint = useExistingProject
+  ? existingProjEndpoint
+  : string(aiProject.properties?.endpoints?['AI Foundry API'] ?? newProjEndpoint)
+
 // Reference to cognitive service in current resource group for new projects
 resource cogServiceReference 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = {
   name: aiServicesName
@@ -45,7 +51,7 @@ resource aiProject 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-pre
 output aiProjectInfo aiProjectOutputType = {
   name: useExistingProject ? existingProjName : aiProject.name
   resourceId: useExistingProject ? azureExistingAIProjectResourceId : aiProject.id
-  apiEndpoint: useExistingProject ? existingProjEndpoint : aiProject.properties.endpoints['AI Foundry API']
+  apiEndpoint: resolvedEndpoint
 }
 
 @export()

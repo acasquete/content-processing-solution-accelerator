@@ -367,22 +367,26 @@ module aiProject 'project.bicep' = if(!empty(projectName) || !empty(azureExistin
 import { secretsOutputType } from 'br/public:avm/utl/types/avm-common-types:0.5.1'
 @description('A hashtable of references to the secrets exported to the provided Key Vault. The key of each reference is each secret\'s name.')
 output exportedSecrets secretsOutputType = (secretsExportConfiguration != null)
-  ? toObject(secretsExport.outputs.secretsSet, secret => last(split(secret.secretResourceId, '/')), secret => secret)
+  ? toObject(secretsExport.outputs?.secretsSet ?? [], secret => last(split(secret.secretResourceId, '/')), secret => secret)
   : {}
 
 @description('The private endpoints of the congitive services account.')
 output privateEndpoints privateEndpointOutputType[] = [
   for (pe, index) in (privateEndpoints ?? []): {
-    name: cognitiveService_privateEndpoints[index].outputs.name
-    resourceId: cognitiveService_privateEndpoints[index].outputs.resourceId
-    groupId: cognitiveService_privateEndpoints[index].outputs.?groupId!
-    customDnsConfigs: cognitiveService_privateEndpoints[index].outputs.customDnsConfigs
-    networkInterfaceResourceIds: cognitiveService_privateEndpoints[index].outputs.networkInterfaceResourceIds
+    name: cognitiveService_privateEndpoints[index]?.outputs.name ?? ''
+    resourceId: cognitiveService_privateEndpoints[index]?.outputs.resourceId ?? ''
+    groupId: cognitiveService_privateEndpoints[index]?.outputs.groupId
+    customDnsConfigs: cognitiveService_privateEndpoints[index]?.outputs.customDnsConfigs ?? []
+    networkInterfaceResourceIds: cognitiveService_privateEndpoints[index]?.outputs.networkInterfaceResourceIds ?? []
   }
 ]
 
 import { aiProjectOutputType } from 'project.bicep'
-output aiProjectInfo aiProjectOutputType = aiProject.outputs.aiProjectInfo
+output aiProjectInfo aiProjectOutputType = aiProject.outputs?.aiProjectInfo ?? {
+  name: ''
+  resourceId: ''
+  apiEndpoint: ''
+}
 
 // ================ //
 // Definitions      //
