@@ -353,7 +353,6 @@ var privateDnsZones = [
   'privatelink.api.azureml.ms'
   'privatelink.notebooks.azure.net'
   'privatelink.mongo.cosmos.azure.com'
-  'privatelink.azconfig.io'
   'privatelink.vaultcore.azure.net'
   'privatelink.azurecr.io'
 ]
@@ -370,9 +369,8 @@ var dnsZoneIndex = {
   aiFoundry: 7
   notebooks: 8
   cosmosDB: 9
-  appConfig: 10
-  keyVault: 11
-  containerRegistry: 12
+  keyVault: 10
+  containerRegistry: 11
 }
 
 @batchSize(5)
@@ -439,15 +437,27 @@ module avmManagedIdentity './modules/managed-identity.bicep' = {
 
 // ========== Key Vault Module ========== //
 
+var keyVaultName = 'kv-${solutionPrefix}'
+
 module avmKeyVault './modules/key-vault.bicep' = {
   params: {
-    keyvaultName: 'kv-${solutionPrefix}'
+    keyvaultName: keyVaultName
     location: resourceGroupLocation
     tags: tags
     roleAssignments: [
       {
         principalId: avmManagedIdentity.outputs.principalId
         roleDefinitionIdOrName: 'Key Vault Administrator'
+        principalType: 'ServicePrincipal'
+      }
+      {
+        principalId: avmContainerApp.outputs.systemAssignedMIPrincipalId!
+        roleDefinitionIdOrName: 'Key Vault Secrets User'
+        principalType: 'ServicePrincipal'
+      }
+      {
+        principalId: avmContainerApp_API.outputs.systemAssignedMIPrincipalId!
+        roleDefinitionIdOrName: 'Key Vault Secrets User'
         principalType: 'ServicePrincipal'
       }
     ]
@@ -798,6 +808,12 @@ module avmContainerApp 'br/public:avm/res/app/container-app:0.17.0' = {
       ]
     }
 
+    secrets: [
+      {
+        name: 'cosmos-connstr'
+        keyVaultUrl: '${avmKeyVault.outputs.vaultUri}secrets/APP-COSMOS-CONNSTR'
+      }
+    ]
     containers: [
       {
         name: 'ca-${solutionPrefix}'
@@ -808,14 +824,26 @@ module avmContainerApp 'br/public:avm/res/app/container-app:0.17.0' = {
           memory: '8.0Gi'
         }
         env: [
-          {
-            name: 'APP_CONFIG_ENDPOINT'
-            value: ''
-          }
-          {
-            name: 'APP_ENV'
-            value: 'prod'
-          }
+          { name: 'APP_ENV', value: 'prod' }
+          { name: 'APP_AZURE_OPENAI_ENDPOINT', value: avmAiServices.outputs.endpoint }
+          { name: 'APP_AZURE_OPENAI_MODEL', value: gptModelName }
+          { name: 'APP_CONTENT_UNDERSTANDING_ENDPOINT', value: avmAiServices_cu.outputs.endpoint }
+          { name: 'APP_COSMOS_CONTAINER_PROCESS', value: 'Processes' }
+          { name: 'APP_COSMOS_CONTAINER_SCHEMA', value: 'Schemas' }
+          { name: 'APP_COSMOS_DATABASE', value: 'ContentProcess' }
+          { name: 'APP_CPS_CONFIGURATION', value: 'cps-configuration' }
+          { name: 'APP_CPS_MAX_FILESIZE_MB', value: '20' }
+          { name: 'APP_CPS_PROCESSES', value: 'cps-processes' }
+          { name: 'APP_LOGGING_ENABLE', value: 'False' }
+          { name: 'APP_LOGGING_LEVEL', value: 'INFO' }
+          { name: 'APP_MESSAGE_QUEUE_INTERVAL', value: '5' }
+          { name: 'APP_MESSAGE_QUEUE_PROCESS_TIMEOUT', value: '180' }
+          { name: 'APP_MESSAGE_QUEUE_VISIBILITY_TIMEOUT', value: '10' }
+          { name: 'APP_PROCESS_STEPS', value: 'extract,map,evaluate,save' }
+          { name: 'APP_STORAGE_BLOB_URL', value: avmStorageAccount.outputs.serviceEndpoints.blob }
+          { name: 'APP_STORAGE_QUEUE_URL', value: avmStorageAccount.outputs.serviceEndpoints.queue }
+          { name: 'APP_AI_PROJECT_ENDPOINT', value: avmAiServices.outputs.aiProjectInfo.apiEndpoint }
+          { name: 'APP_COSMOS_CONNSTR', secretRef: 'cosmos-connstr' }
         ]
       }
     ]
@@ -847,6 +875,12 @@ module avmContainerApp_API 'br/public:avm/res/app/container-app:0.17.0' = {
         avmContainerRegistryReader.outputs.resourceId
       ]
     }
+    secrets: [
+      {
+        name: 'cosmos-connstr'
+        keyVaultUrl: '${avmKeyVault.outputs.vaultUri}secrets/APP-COSMOS-CONNSTR'
+      }
+    ]
     containers: [
       {
         name: 'ca-${solutionPrefix}-api'
@@ -856,14 +890,19 @@ module avmContainerApp_API 'br/public:avm/res/app/container-app:0.17.0' = {
           memory: '8.0Gi'
         }
         env: [
-          {
-            name: 'APP_CONFIG_ENDPOINT'
-            value: ''
-          }
-          {
-            name: 'APP_ENV'
-            value: 'prod'
-          }
+          { name: 'APP_ENV', value: 'prod' }
+          { name: 'APP_STORAGE_BLOB_URL', value: avmStorageAccount.outputs.serviceEndpoints.blob }
+          { name: 'APP_STORAGE_QUEUE_URL', value: avmStorageAccount.outputs.serviceEndpoints.queue }
+          { name: 'APP_COSMOS_DATABASE', value: 'ContentProcess' }
+          { name: 'APP_COSMOS_CONTAINER_SCHEMA', value: 'Schemas' }
+          { name: 'APP_COSMOS_CONTAINER_PROCESS', value: 'Processes' }
+          { name: 'APP_CPS_CONFIGURATION', value: 'cps-configuration' }
+          { name: 'APP_CPS_PROCESSES', value: 'cps-processes' }
+          { name: 'APP_MESSAGE_QUEUE_EXTRACT', value: 'content-pipeline-extract-queue' }
+          { name: 'APP_CPS_MAX_FILESIZE_MB', value: '20' }
+          { name: 'APP_LOGGING_ENABLE', value: 'False' }
+          { name: 'APP_LOGGING_LEVEL', value: 'INFO' }
+          { name: 'APP_COSMOS_CONNSTR', secretRef: 'cosmos-connstr' }
         ]
         probes: [
           // Liveness Probe - Checks if the app is still running
@@ -1071,183 +1110,14 @@ module avmCosmosDB 'br/public:avm/res/document-db/database-account:0.15.0' = {
   }
 }
 
-// ========== App Configuration ========== //
-module avmAppConfig 'br/public:avm/res/app-configuration/configuration-store:0.6.3' = {
-  name: format(resourceNameFormatString, 'appcs-')
-  params: {
-    name: 'appcs-${solutionPrefix}'
-    location: resourceGroupLocation
-    tags: {
-      app: solutionPrefix
-      location: resourceGroupLocation
-    }
-    enableTelemetry: enableTelemetry
-    managedIdentities: { systemAssigned: true }
-    sku: 'Standard'
-    diagnosticSettings: [
-      {
-        workspaceResourceId: logAnalyticsWorkspace.outputs.resourceId
-        logCategoriesAndGroups: [
-          {
-            categoryGroup: 'allLogs'
-            enabled: true
-          }
-        ]
-      }
-    ]
-    disableLocalAuth: false
-    replicaLocations: (resourceGroupLocation != secondaryLocation) ? [secondaryLocation] : []
-    roleAssignments: [
-      {
-        principalId: avmContainerApp.outputs.?systemAssignedMIPrincipalId!
-        roleDefinitionIdOrName: 'App Configuration Data Reader'
-        principalType: 'ServicePrincipal'
-      }
-      {
-        principalId: avmContainerApp_API.outputs.?systemAssignedMIPrincipalId!
-        roleDefinitionIdOrName: 'App Configuration Data Reader'
-        principalType: 'ServicePrincipal'
-      }
-      {
-        principalId: avmContainerApp_Web.outputs.?systemAssignedMIPrincipalId!
-        roleDefinitionIdOrName: 'App Configuration Data Reader'
-        principalType: 'ServicePrincipal'
-      }
-    ]
-    keyValues: [
-      {
-        name: 'APP_AZURE_OPENAI_ENDPOINT'
-        value: avmAiServices.outputs.endpoint //TODO: replace with actual endpoint
-      }
-      {
-        name: 'APP_AZURE_OPENAI_MODEL'
-        value: gptModelName
-      }
-      {
-        name: 'APP_CONTENT_UNDERSTANDING_ENDPOINT'
-        value: avmAiServices_cu.outputs.endpoint //TODO: replace with actual endpoint
-      }
-      {
-        name: 'APP_COSMOS_CONTAINER_PROCESS'
-        value: 'Processes'
-      }
-      {
-        name: 'APP_COSMOS_CONTAINER_SCHEMA'
-        value: 'Schemas'
-      }
-      {
-        name: 'APP_COSMOS_DATABASE'
-        value: 'ContentProcess'
-      }
-      {
-        name: 'APP_CPS_CONFIGURATION'
-        value: 'cps-configuration'
-      }
-      {
-        name: 'APP_CPS_MAX_FILESIZE_MB'
-        value: '20'
-      }
-      {
-        name: 'APP_CPS_PROCESSES'
-        value: 'cps-processes'
-      }
-      {
-        name: 'APP_LOGGING_ENABLE'
-        value: 'False'
-      }
-      {
-        name: 'APP_LOGGING_LEVEL'
-        value: 'INFO'
-      }
-      {
-        name: 'APP_MESSAGE_QUEUE_EXTRACT'
-        value: 'content-pipeline-extract-queue'
-      }
-      {
-        name: 'APP_MESSAGE_QUEUE_INTERVAL'
-        value: '5'
-      }
-      {
-        name: 'APP_MESSAGE_QUEUE_PROCESS_TIMEOUT'
-        value: '180'
-      }
-      {
-        name: 'APP_MESSAGE_QUEUE_VISIBILITY_TIMEOUT'
-        value: '10'
-      }
-      {
-        name: 'APP_PROCESS_STEPS'
-        value: 'extract,map,evaluate,save'
-      }
-      {
-        name: 'APP_STORAGE_BLOB_URL'
-        value: avmStorageAccount.outputs.serviceEndpoints.blob
-      }
-      {
-        name: 'APP_STORAGE_QUEUE_URL'
-        value: avmStorageAccount.outputs.serviceEndpoints.queue
-      }
-      {
-        name: 'APP_AI_PROJECT_ENDPOINT'
-        value: avmAiServices.outputs.aiProjectInfo.apiEndpoint
-      }
-      {
-        name: 'APP_COSMOS_CONNSTR'
-        value: avmCosmosDB.outputs.primaryReadWriteConnectionString
-      }
-    ]
-
-    publicNetworkAccess: 'Enabled'
-    // WAF related parameters
-
-    // privateEndpoints: (enablePrivateNetworking)
-    //   ? [
-    //       {
-    //         name: 'appconfig-private-endpoint'
-    //         privateEndpointResourceId: avmVirtualNetwork.outputs.resourceId
-    //         privateDnsZoneGroup: {
-    //           privateDnsZoneGroupConfigs: [
-    //             {
-    //               name: 'appconfig-dns-zone-group'
-    //               privateDnsZoneResourceId: avmPrivateDnsZones[dnsZoneIndex.appConfig].outputs.resourceId
-    //               //privateDnsZoneResourceId: avmPrivateDnsZoneAppConfig.outputs.resourceId
-    //             }
-    //           ]
-    //         }
-    //         subnetResourceId: avmVirtualNetwork.outputs.subnetResourceIds[0] // Use the backend subnet
-    //       }
-    //     ]
-    //   : []
+resource cosmosConnStrSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  name: '${keyVaultName}/APP-COSMOS-CONNSTR'
+  properties: {
+    value: avmCosmosDB.outputs.primaryReadWriteConnectionString
   }
-}
-
-module avmAppConfig_update 'br/public:avm/res/app-configuration/configuration-store:0.6.3' = if (enablePrivateNetworking) {
-  name: format(resourceNameFormatString, 'appcs-update')
-  params: {
-    name: 'appcs-${solutionPrefix}'
-    location: resourceGroupLocation
-    enableTelemetry: enableTelemetry
-    tags: tags
-    publicNetworkAccess: 'Disabled'
-    privateEndpoints: [
-      {
-        name: 'appconfig-private-endpoint-${solutionPrefix}'
-        privateDnsZoneGroup: {
-          privateDnsZoneGroupConfigs: [
-            {
-              name: 'appconfig-dns-zone-group'
-              privateDnsZoneResourceId: avmPrivateDnsZones[dnsZoneIndex.appConfig].outputs.resourceId
-              //privateDnsZoneResourceId: avmPrivateDnsZoneAppConfig.outputs.resourceId
-            }
-          ]
-        }
-        subnetResourceId: avmVirtualNetwork.outputs.subnetResourceIds[0] // Use the backend subnet
-      }
-    ]
-  }
-
   dependsOn: [
-    avmAppConfig
+    avmKeyVault,
+    avmCosmosDB
   ]
 }
 
@@ -1268,6 +1138,12 @@ module avmContainerApp_update 'br/public:avm/res/app/container-app:0.17.0' = {
         avmContainerRegistryReader.outputs.resourceId
       ]
     }
+    secrets: [
+      {
+        name: 'cosmos-connstr'
+        keyVaultUrl: '${avmKeyVault.outputs.vaultUri}secrets/APP-COSMOS-CONNSTR'
+      }
+    ]
     containers: [
       {
         name: 'ca-${solutionPrefix}'
@@ -1278,14 +1154,26 @@ module avmContainerApp_update 'br/public:avm/res/app/container-app:0.17.0' = {
           memory: '8.0Gi'
         }
         env: [
-          {
-            name: 'APP_CONFIG_ENDPOINT'
-            value: avmAppConfig.outputs.endpoint
-          }
-          {
-            name: 'APP_ENV'
-            value: 'prod'
-          }
+          { name: 'APP_ENV', value: 'prod' }
+          { name: 'APP_AZURE_OPENAI_ENDPOINT', value: avmAiServices.outputs.endpoint }
+          { name: 'APP_AZURE_OPENAI_MODEL', value: gptModelName }
+          { name: 'APP_CONTENT_UNDERSTANDING_ENDPOINT', value: avmAiServices_cu.outputs.endpoint }
+          { name: 'APP_COSMOS_CONTAINER_PROCESS', value: 'Processes' }
+          { name: 'APP_COSMOS_CONTAINER_SCHEMA', value: 'Schemas' }
+          { name: 'APP_COSMOS_DATABASE', value: 'ContentProcess' }
+          { name: 'APP_CPS_CONFIGURATION', value: 'cps-configuration' }
+          { name: 'APP_CPS_MAX_FILESIZE_MB', value: '20' }
+          { name: 'APP_CPS_PROCESSES', value: 'cps-processes' }
+          { name: 'APP_LOGGING_ENABLE', value: 'False' }
+          { name: 'APP_LOGGING_LEVEL', value: 'INFO' }
+          { name: 'APP_MESSAGE_QUEUE_INTERVAL', value: '5' }
+          { name: 'APP_MESSAGE_QUEUE_PROCESS_TIMEOUT', value: '180' }
+          { name: 'APP_MESSAGE_QUEUE_VISIBILITY_TIMEOUT', value: '10' }
+          { name: 'APP_PROCESS_STEPS', value: 'extract,map,evaluate,save' }
+          { name: 'APP_STORAGE_BLOB_URL', value: avmStorageAccount.outputs.serviceEndpoints.blob }
+          { name: 'APP_STORAGE_QUEUE_URL', value: avmStorageAccount.outputs.serviceEndpoints.queue }
+          { name: 'APP_AI_PROJECT_ENDPOINT', value: avmAiServices.outputs.aiProjectInfo.apiEndpoint }
+          { name: 'APP_COSMOS_CONNSTR', secretRef: 'cosmos-connstr' }
         ]
       }
     ]
@@ -1328,6 +1216,12 @@ module avmContainerApp_API_update 'br/public:avm/res/app/container-app:0.17.0' =
       ]
     }
 
+    secrets: [
+      {
+        name: 'cosmos-connstr'
+        keyVaultUrl: '${avmKeyVault.outputs.vaultUri}secrets/APP-COSMOS-CONNSTR'
+      }
+    ]
     containers: [
       {
         name: 'ca-${solutionPrefix}-api'
@@ -1337,14 +1231,19 @@ module avmContainerApp_API_update 'br/public:avm/res/app/container-app:0.17.0' =
           memory: '8.0Gi'
         }
         env: [
-          {
-            name: 'APP_CONFIG_ENDPOINT'
-            value: avmAppConfig.outputs.endpoint
-          }
-          {
-            name: 'APP_ENV'
-            value: 'prod'
-          }
+          { name: 'APP_ENV', value: 'prod' }
+          { name: 'APP_STORAGE_BLOB_URL', value: avmStorageAccount.outputs.serviceEndpoints.blob }
+          { name: 'APP_STORAGE_QUEUE_URL', value: avmStorageAccount.outputs.serviceEndpoints.queue }
+          { name: 'APP_COSMOS_DATABASE', value: 'ContentProcess' }
+          { name: 'APP_COSMOS_CONTAINER_SCHEMA', value: 'Schemas' }
+          { name: 'APP_COSMOS_CONTAINER_PROCESS', value: 'Processes' }
+          { name: 'APP_CPS_CONFIGURATION', value: 'cps-configuration' }
+          { name: 'APP_CPS_PROCESSES', value: 'cps-processes' }
+          { name: 'APP_MESSAGE_QUEUE_EXTRACT', value: 'content-pipeline-extract-queue' }
+          { name: 'APP_CPS_MAX_FILESIZE_MB', value: '20' }
+          { name: 'APP_LOGGING_ENABLE', value: 'False' }
+          { name: 'APP_LOGGING_LEVEL', value: 'INFO' }
+          { name: 'APP_COSMOS_CONNSTR', secretRef: 'cosmos-connstr' }
         ]
         probes: [
           // Liveness Probe - Checks if the app is still running

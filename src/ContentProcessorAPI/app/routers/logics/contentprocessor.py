@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+from fastapi import Depends
 from pydantic import BaseModel, Field
 
 from app.appsettings import AppConfiguration, get_app_config
@@ -13,9 +14,9 @@ class ContentProcessor(BaseModel):
     blobHelper: StorageBlobHelper = Field(default=None)
     queueHelper: StorageQueueHelper = Field(default=None)
 
-    def __init__(self):
+    def __init__(self, config: AppConfiguration | None = None):
         super().__init__()
-        self.config = get_app_config()
+        self.config = config or get_app_config()
         self.blobHelper = StorageBlobHelper(
             self.config.app_storage_blob_url, self.config.app_cps_processes
         )
@@ -33,8 +34,13 @@ class ContentProcessor(BaseModel):
         arbitrary_types_allowed = True
 
 
-coontent_processor = ContentProcessor()
+_content_processor: ContentProcessor | None = None
 
 
-def get_content_processor() -> ContentProcessor:
-    return coontent_processor
+def get_content_processor(
+    app_config: AppConfiguration = Depends(get_app_config),
+) -> ContentProcessor:
+    global _content_processor
+    if _content_processor is None:
+        _content_processor = ContentProcessor(config=app_config)
+    return _content_processor

@@ -10,7 +10,7 @@ client = TestClient(app)
 
 @pytest.fixture
 def app_config():
-    config = AppConfiguration()
+    config = AppConfiguration.model_construct()
     config.app_cosmos_connstr = "test_connection_string"
     config.app_cosmos_database = "test_database"
     config.app_cosmos_container_process = "test_container"
@@ -21,7 +21,7 @@ def app_config():
 
 @pytest.fixture
 def mock_app_config():
-    with patch("app.routers.contentprocessor.get_app_config") as mock:
+    with patch("app.appsettings.get_app_config") as mock:
         yield mock
 
 
@@ -37,7 +37,7 @@ def mock_mime_types_detection():
         yield mock
 
 
-@patch("app.routers.contentprocessor.get_app_config")
+@patch("app.appsettings.get_app_config")
 @patch(
     "app.routers.contentprocessor.CosmosContentProcess.get_all_processes_from_cosmos"
 )
@@ -66,7 +66,7 @@ def test_get_all_processed_results(
     }
 
 
-@patch("app.routers.contentprocessor.get_app_config")
+@patch("app.appsettings.get_app_config")
 @patch("app.routers.contentprocessor.CosmosContentProcess.get_status_from_cosmos")
 def test_get_status_processing(mock_get_status, mock_get_app_config, app_config):
     mock_get_app_config.return_value = app_config
@@ -78,7 +78,7 @@ def test_get_status_processing(mock_get_status, mock_get_app_config, app_config)
     assert "still in progress" in response.json()["message"]
 
 
-@patch("app.routers.contentprocessor.get_app_config")
+@patch("app.appsettings.get_app_config")
 @patch("app.routers.contentprocessor.CosmosContentProcess.get_status_from_cosmos")
 def test_get_status_completed(mock_get_status, mock_get_app_config, app_config):
     mock_get_app_config.return_value = app_config
@@ -90,7 +90,7 @@ def test_get_status_completed(mock_get_status, mock_get_app_config, app_config):
     assert "is completed" in response.json()["message"]
 
 
-@patch("app.routers.contentprocessor.get_app_config")
+@patch("app.appsettings.get_app_config")
 @patch("app.routers.contentprocessor.CosmosContentProcess.get_status_from_cosmos")
 def test_get_status_failed(mock_get_status, mock_get_app_config, app_config):
     mock_get_app_config.return_value = app_config
@@ -102,7 +102,7 @@ def test_get_status_failed(mock_get_status, mock_get_app_config, app_config):
     assert "not found" in response.json()["message"]
 
 
-@patch("app.routers.contentprocessor.get_app_config")
+@patch("app.appsettings.get_app_config")
 @patch("app.routers.contentprocessor.CosmosContentProcess.get_status_from_cosmos")
 def test_get_process(mock_get_status, mock_get_app_config, app_config):
     mock_get_app_config.return_value = app_config
@@ -129,7 +129,7 @@ def test_get_process(mock_get_status, mock_get_app_config, app_config):
     assert response.status_code == 200
 
 
-@patch("app.routers.contentprocessor.get_app_config")
+@patch("app.appsettings.get_app_config")
 @patch("app.routers.contentprocessor.CosmosContentProcess.get_status_from_cosmos")
 def test_get_process_not_found(mock_get_status, mock_get_app_config, app_config):
     mock_get_app_config.return_value = app_config
@@ -140,7 +140,7 @@ def test_get_process_not_found(mock_get_status, mock_get_app_config, app_config)
     assert response.json()["status"] == "failed"
 
 
-@patch("app.routers.contentprocessor.get_app_config")
+@patch("app.appsettings.get_app_config")
 @patch("app.routers.contentprocessor.CosmosContentProcess.get_status_from_blob")
 def test_get_process_steps(mock_get_steps, mock_get_app_config, app_config):
     mock_get_app_config.return_value = app_config
@@ -151,7 +151,7 @@ def test_get_process_steps(mock_get_steps, mock_get_app_config, app_config):
     assert response.json() == {"steps": []}
 
 
-@patch("app.routers.contentprocessor.get_app_config")
+@patch("app.appsettings.get_app_config")
 @patch("app.routers.contentprocessor.CosmosContentProcess.get_status_from_blob")
 def test_get_process_steps_not_found(mock_get_steps, mock_get_app_config, app_config):
     mock_get_app_config.return_value = app_config
@@ -162,7 +162,7 @@ def test_get_process_steps_not_found(mock_get_steps, mock_get_app_config, app_co
     assert response.json()["status"] == "failed"
 
 
-@patch("app.routers.contentprocessor.get_app_config")
+@patch("app.appsettings.get_app_config")
 @patch("app.routers.contentprocessor.CosmosContentProcess.update_process_result")
 def test_update_process_result(mock_update_result, mock_get_app_config, app_config):
     mock_get_app_config.return_value = app_config
@@ -174,7 +174,7 @@ def test_update_process_result(mock_update_result, mock_get_app_config, app_conf
     assert response.json()["status"] == "success"
 
 
-@patch("app.routers.contentprocessor.get_app_config")
+@patch("app.appsettings.get_app_config")
 @patch("app.routers.contentprocessor.CosmosContentProcess.update_process_comment")
 def test_update_process_comment(mock_update_comment, mock_get_app_config, app_config):
     mock_get_app_config.return_value = app_config
@@ -217,7 +217,7 @@ def test_get_original_file_success(
     )
 
 
-@patch("app.routers.contentprocessor.get_app_config")
+@patch("app.appsettings.get_app_config")
 @patch("app.routers.contentprocessor.CosmosContentProcess.get_status_from_cosmos")
 def test_get_original_file_not_found(mock_get_status, mock_get_app_config, app_config):
     mock_get_app_config.return_value = app_config

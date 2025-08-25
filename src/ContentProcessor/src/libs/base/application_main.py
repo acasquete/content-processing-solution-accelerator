@@ -10,8 +10,6 @@ from dotenv import load_dotenv
 
 from libs.application.application_configuration import AppConfiguration
 from libs.application.application_context import AppContext
-from libs.application.env_config import EnvConfiguration
-from libs.azure_helper.app_configuration import AppConfigurationHelper
 from libs.base.application_models import AppModelBase
 
 
@@ -25,13 +23,8 @@ class AppMainBase(ABC, AppModelBase):
     def __init__(self, env_file_path: str | None = None, **data):
         super().__init__(**data)
 
-        # Read .env file first - Get App configuration Service Endpoint
+        # Read environment variables from .env file if provided
         self._load_env(env_file_path=env_file_path)
-
-        # Load environment variables from Azure App Configuration endpoint url
-        AppConfigurationHelper(
-            EnvConfiguration().app_config_endpoint
-        ).read_and_set_environmental_variables()
 
         # Set App Context object
         self.application_context = AppContext()

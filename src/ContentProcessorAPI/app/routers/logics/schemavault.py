@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 from fastapi import UploadFile
+from fastapi import Depends
 from pydantic import BaseModel, Field
 
 from app.appsettings import AppConfiguration, get_app_config
@@ -23,9 +24,9 @@ class Schemas(BaseModel):
     blobHelper: StorageBlobHelper = Field(default=None)
     mongoHelper: CosmosMongDBHelper = Field(default=None)
 
-    def __init__(self):
+    def __init__(self, config: AppConfiguration | None = None):
         super().__init__()
-        self.config = get_app_config()
+        self.config = config or get_app_config()
         self.blobHelper = StorageBlobHelper(
             self.config.app_storage_blob_url,
             f"{self.config.app_cps_configuration}/{self.config.app_cosmos_container_schema}",
@@ -114,8 +115,13 @@ class Schemas(BaseModel):
         arbitrary_types_allowed = True
 
 
-schemas = Schemas()
+_schemas: Schemas | None = None
 
 
-def get_schemas() -> Schemas:
-    return schemas
+def get_schemas(
+    app_config: AppConfiguration = Depends(get_app_config),
+) -> Schemas:
+    global _schemas
+    if _schemas is None:
+        _schemas = Schemas(config=app_config)
+    return _schemas

@@ -7,15 +7,8 @@ import os
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.libs.app_configuration.helper import AppConfigurationHelper
-
-
 class ModelBaseSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore", case_sensitive=False)
-
-
-class EnvConfiguration(ModelBaseSettings):
-    app_config_endpoint: str
 
 
 class AppConfiguration(ModelBaseSettings):
@@ -38,23 +31,16 @@ class AppConfiguration(ModelBaseSettings):
 env_file_path = os.path.join(os.path.dirname(__file__), ".env")
 load_dotenv(env_file_path)
 
-# Get App Configuration
-env_config = EnvConfiguration()
-app_helper = AppConfigurationHelper(env_config.app_config_endpoint)
-app_helper.read_and_set_environmental_variables()
-
-app_config = AppConfiguration()
-
-if app_config.app_logging_enable:
-    # Read Configuration for Logging Level as a Text then retrive the logging level
-    logging_level = getattr(
-        logging, app_config.app_logging_level
-    )
-    logging.basicConfig(level=logging_level)
-else:
-    logging.disable(logging.CRITICAL)
+app_config: AppConfiguration | None = None
 
 
-# Dependency Function
 def get_app_config() -> AppConfiguration:
+    global app_config
+    if app_config is None:
+        app_config = AppConfiguration()
+        if app_config.app_logging_enable:
+            logging_level = getattr(logging, app_config.app_logging_level)
+            logging.basicConfig(level=logging_level)
+        else:
+            logging.disable(logging.CRITICAL)
     return app_config
