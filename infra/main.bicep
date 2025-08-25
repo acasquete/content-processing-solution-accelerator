@@ -496,7 +496,7 @@ module avmStorageAccount 'br/public:avm/res/storage/storage-account:0.20.0' = {
   params: {
     name: 'st${replace(solutionPrefix, '-', '')}'
     location: resourceGroupLocation
-    //skuName: 'Standard_GRS'
+    skuName: 'Standard_LRS'
     //kind: 'StorageV2'
     managedIdentities: { systemAssigned: true }
     minimumTlsVersion: 'TLS1_2'
