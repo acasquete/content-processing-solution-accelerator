@@ -9,13 +9,13 @@ from pdf2image import convert_from_bytes
 
 from libs.application.application_context import AppContext
 from libs.azure_helper.azure_openai import get_openai_client
-from libs.azure_helper.model.content_understanding import AnalyzedResult
 from libs.pipeline.entities.mime_types import MimeTypes
 from libs.pipeline.entities.pipeline_file import ArtifactType, PipelineLogEntry
 from libs.pipeline.entities.pipeline_message_context import MessageContext
 from libs.pipeline.entities.pipeline_step_result import StepResult
 from libs.pipeline.entities.schema import Schema
 from libs.pipeline.queue_handler_base import HandlerBase
+from libs.utils.content_understanding_schema import get_generated_fields_model
 from libs.utils.remote_module_loader import load_schema_from_blob
 
 
@@ -26,17 +26,20 @@ class MapHandler(HandlerBase):
     async def execute(self, context: MessageContext) -> StepResult:
         print(context.data_pipeline.get_previous_step_result(self.handler_name))
 
-        # Get Output files from context.data_pipeline in files list where processed by 'extract' and artifact_type is 'extacted_content'
+        # Retrieve content understanding output from the previous extract step
         output_file_json_string = self.download_output_file_to_json_string(
             processed_by="extract",
             artifact_type=ArtifactType.ExtractedContent,
         )
 
-        # Deserialize the result to AnalyzedResult
-        previous_result = AnalyzedResult(**json.loads(output_file_json_string))
-
-        # Get Markdown content string from the previous result
-        markdown_string = previous_result.result.contents[0].markdown
+        previous_result = json.loads(output_file_json_string)
+        result_section = previous_result.get("result", {})
+        # Fields extracted by Content Understanding. These will be merged with the
+        # GPT generated fields later.
+        cu_fields = result_section.get("fields", {})
+        markdown_string = (
+            result_section.get("contents", [{}])[0].get("markdown", "")
+        )
 
         # Prepare the prompt
         user_content = self._prepare_prompt(markdown_string)
@@ -73,15 +76,23 @@ class MapHandler(HandlerBase):
                 )
             )
 
-        # Check Schema Information
+        # Load the full target schema and derive a model containing only fields
+        # that require GPT generation.
         selected_schema = Schema.get_schema(
             connection_string=self.application_context.configuration.app_cosmos_connstr,
             database_name=self.application_context.configuration.app_cosmos_database,
             collection_name=self.application_context.configuration.app_cosmos_container_schema,
             schema_id=context.data_pipeline.pipeline_status.schema_id,
         )
+        schema_model = load_schema_from_blob(
+            account_url=self.application_context.configuration.app_storage_blob_url,
+            container_name=f"{self.application_context.configuration.app_cps_configuration}/Schemas/{context.data_pipeline.pipeline_status.schema_id}",
+            blob_name=selected_schema.FileName,
+            module_name=selected_schema.ClassName,
+        )
+        generated_model = get_generated_fields_model(schema_model)
 
-        # Invoke GPT with the prompt
+        # Invoke GPT with the prompt but only requesting the generated fields
         gpt_response = get_openai_client(
             self.application_context.configuration.app_azure_openai_endpoint
         ).beta.chat.completions.parse(
@@ -99,17 +110,22 @@ class MapHandler(HandlerBase):
                 },
                 {"role": "user", "content": user_content},
             ],
-            response_format=load_schema_from_blob(
-                account_url=self.application_context.configuration.app_storage_blob_url,
-                container_name=f"{self.application_context.configuration.app_cps_configuration}/Schemas/{context.data_pipeline.pipeline_status.schema_id}",
-                blob_name=selected_schema.FileName,
-                module_name=selected_schema.ClassName,
-            ),
+            response_format=generated_model,
             max_tokens=4096,
             temperature=0.1,
             top_p=0.1,
             logprobs=True,  # Get Probability of confidence determined by the model
         )
+
+        # Merge Content Understanding fields with GPT generated fields to produce
+        # the final schema output.
+        generated_values = gpt_response.choices[0].message.parsed
+        if hasattr(generated_values, "model_dump"):
+            generated_values = generated_values.model_dump()
+
+        final_data = {**cu_fields, **generated_values}
+        final_obj = schema_model(**final_data)
+        gpt_response.choices[0].message.parsed = final_obj.model_dump()
 
         # serialized_response = json.dumps(gpt_response.dict())
 
