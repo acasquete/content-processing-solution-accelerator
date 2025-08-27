@@ -117,21 +117,24 @@ class InvoiceItem(BaseModel):
             "First, try to determine this from extracted data (item description, part number, HTS code). "
             "If it cannot be extracted, GPT should estimate based on its internal knowledge of UN dangerous goods regulations. "
             "If there is any indication of dangerous goods, set value=True."
-        )
+        ),
+        json_schema_extra={"generated": True},
     )
     un_number: Optional[str] = Field(
         description=(
             "UN identification number for dangerous goods, e.g. UN1203. "
             "First, try to extract it from the document (item description, part number, HTS code, or other identifiers). "
             "If it cannot be extracted, GPT should provide the most likely UN number based on its internal knowledge of UN regulations."
-        )
+        ),
+        json_schema_extra={"generated": True},
     )
     dangerous_goods_class: Optional[str] = Field(
         description=(
             "UN dangerous goods classification, e.g. Class 3 - Flammable liquids. "
             "First, try to extract it from the document. "
             "If it cannot be extracted, GPT should infer the correct class and description based on its internal knowledge of UN standards."
-        )
+        ),
+        json_schema_extra={"generated": True},
     )
     @staticmethod
     def example():
